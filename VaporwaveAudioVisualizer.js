@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Volume2, VolumeX, Play, Pause } from 'lucide-react';
+import { Volume2, VolumeX, Play, Pause, Monitor, Mic } from 'lucide-react';
 
 export default function VaporwaveAudioVisualizer() {
   const canvasRef = useRef(null);
@@ -13,6 +13,7 @@ export default function VaporwaveAudioVisualizer() {
   
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState(null);
+  const [audioSource, setAudioSource] = useState('microphone'); // 'microphone' or 'tab'
   
   // Control parameters
   const [wavePropagation, setWavePropagation] = useState(50);
@@ -32,15 +33,38 @@ export default function VaporwaveAudioVisualizer() {
     overall: 0
   });
 
-  const startAudioCapture = async () => {
+  const startAudioCapture = async (source = audioSource) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        } 
-      });
+      let stream;
+      
+      if (source === 'tab') {
+        // Capture tab audio
+        stream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: true, // Required for tab capture
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            suppressLocalAudioPlayback: false
+          }
+        });
+        
+        // Check if audio track exists
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length === 0) {
+          throw new Error('No audio track found. Make sure to check "Share audio" when selecting a tab.');
+        }
+      } else {
+        // Capture microphone audio
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          } 
+        });
+      }
+      
       streamRef.current = stream;
       
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -51,8 +75,8 @@ export default function VaporwaveAudioVisualizer() {
       analyser.smoothingTimeConstant = 0.8;
       analyserRef.current = analyser;
       
-      const source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
+      const audioSource = audioContext.createMediaStreamSource(stream);
+      audioSource.connect(analyser);
       
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
@@ -62,7 +86,11 @@ export default function VaporwaveAudioVisualizer() {
       setError(null);
       animate();
     } catch (err) {
-      setError('Microphone access denied. Please allow microphone access to visualize audio.');
+      if (source === 'tab') {
+        setError('Tab audio capture failed. Make sure to select a tab and check "Share audio" in the dialog.');
+      } else {
+        setError('Microphone access denied. Please allow microphone access to visualize audio.');
+      }
       console.error('Audio capture error:', err);
     }
   };
@@ -318,23 +346,42 @@ export default function VaporwaveAudioVisualizer() {
         <div className="bg-black/70 backdrop-blur-md rounded-lg p-4 max-w-md">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-white font-bold text-lg">Vaporwave Audio Visualizer</h1>
-            <button
-              onClick={isListening ? stopAudioCapture : startAudioCapture}
-              className="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-lg flex items-center gap-2 transition-colors"
-            >
-              {isListening ? (
-                <>
-                  <Pause size={18} />
-                  Stop
-                </>
-              ) : (
-                <>
-                  <Play size={18} />
-                  Start
-                </>
-              )}
-            </button>
+            {isListening && (
+              <button
+                onClick={stopAudioCapture}
+                className="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <Pause size={18} />
+                Stop
+              </button>
+            )}
           </div>
+          
+          {!isListening && (
+            <div className="space-y-3 mb-4">
+              <button
+                onClick={() => {
+                  setAudioSource('tab');
+                  startAudioCapture('tab');
+                }}
+                className="w-full px-4 py-3 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                <Monitor size={20} />
+                Capture Tab Audio
+              </button>
+              
+              <button
+                onClick={() => {
+                  setAudioSource('microphone');
+                  startAudioCapture('microphone');
+                }}
+                className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                <Mic size={20} />
+                Use Microphone
+              </button>
+            </div>
+          )}
           
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded text-red-200 text-sm">
@@ -344,7 +391,11 @@ export default function VaporwaveAudioVisualizer() {
           
           {!isListening && !error && (
             <div className="mb-4 p-3 bg-cyan-500/20 border border-cyan-500 rounded text-cyan-200 text-sm">
-              Click "Start" and allow microphone access to visualize your music
+              <div className="font-semibold mb-1">Choose audio source:</div>
+              <div className="text-xs space-y-1">
+                <div>• <strong>Tab Audio:</strong> Capture music from YouTube, Spotify, etc.</div>
+                <div>• <strong>Microphone:</strong> Capture sounds around you</div>
+              </div>
             </div>
           )}
           
@@ -476,7 +527,9 @@ export default function VaporwaveAudioVisualizer() {
       {isListening && (
         <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/70 backdrop-blur-md rounded-lg px-4 py-2">
           <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-          <span className="text-white text-sm">Listening...</span>
+          <span className="text-white text-sm">
+            Listening via {audioSource === 'tab' ? 'Tab Audio' : 'Microphone'}...
+          </span>
         </div>
       )}
     </div>

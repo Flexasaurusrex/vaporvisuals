@@ -13,6 +13,7 @@ export default function VaporwaveAudioVisualizer() {
   
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState(null);
+  const [captureMode, setCaptureMode] = useState('microphone'); // 'microphone' or 'tab'
   const [audioSource, setAudioSource] = useState('microphone'); // 'microphone' or 'tab'
   
   // Control parameters
